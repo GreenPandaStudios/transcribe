@@ -119,6 +119,11 @@
       align-items: center;
       justify-content: center;
       margin-bottom: 20px;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .recording-status:active {
+      transform: scale(0.95);
     }
     .pulse-ring {
       width: 120px;
@@ -217,9 +222,10 @@
       <h1 id="recordTitle">Recording...</h1>
     </div>
 
-    <div class="recording-status">
+    <div class="recording-status" id="recordingIndicatorBtn" title="Tap to Stop">
       <div class="pulse-ring"><div class="pulse-core"></div></div>
-      <div style="color: var(--danger); font-weight: 600; letter-spacing: 1px;">LIVE</div>
+      <div style="color: var(--danger); font-weight: 600; letter-spacing: 1px; margin-bottom: 5px;">LIVE</div>
+      <div style="color: var(--text-muted); font-size: 0.8rem;">Tap to Stop & Save</div>
     </div>
 
     <div class="live-transcript" id="liveTranscriptBox"></div>
@@ -265,6 +271,7 @@
     const meetingNameInput = document.getElementById('meetingName');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const recordingIndicatorBtn = document.getElementById('recordingIndicatorBtn');
     const liveTranscriptBox = document.getElementById('liveTranscriptBox');
     const homeError = document.getElementById('homeError');
 
@@ -344,7 +351,6 @@
       document.getElementById('detailTitle').textContent = meeting.name;
       document.getElementById('detailTranscriptBox').innerHTML = meeting.htmlText || meeting.plainText;
       
-      // Change Share button text based on capability
       const shareBtn = document.getElementById('shareBtn');
       if (!navigator.share) {
         shareBtn.textContent = 'Copy Text';
@@ -449,6 +455,9 @@
     startBtn.addEventListener('click', startRecordingWorkflow);
     stopBtn.addEventListener('click', stopRecordingWorkflow);
     
+    // Wire up the new pulsing circle button
+    recordingIndicatorBtn.addEventListener('click', stopRecordingWorkflow);
+    
     // Share logic
     document.getElementById('shareBtn').addEventListener('click', async () => {
       const meeting = getSavedMeetings().find(m => m.id === activeMeetingIdForDetail);
@@ -466,7 +475,6 @@
           console.log('Error sharing:', err);
         }
       } else {
-        // Fallback to clipboard if sharing isn't supported
         navigator.clipboard.writeText(shareData.text)
           .then(() => alert('Transcript copied to clipboard!'))
           .catch(err => alert('Failed to copy text.'));
