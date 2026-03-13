@@ -213,15 +213,31 @@
         downloadBtn.disabled = true;
       };
 
+      // Deduplication variable
+      let lastFinalText = '';
+
       recognition.onresult = (event) => {
         let interimTranscript = '';
+        let newFinalText = '';
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
+          let transcriptSegment = event.results[i][0].transcript.trim();
+          
           if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + ' ';
+            // Anti-Duplication Check: Only add if it's not the exact same as the last chunk
+            if (transcriptSegment !== '' && transcriptSegment !== lastFinalText) {
+              newFinalText += transcriptSegment + ' ';
+              lastFinalText = transcriptSegment; // Save it to check against the next one
+            }
           } else {
+            // Keep interim results with their natural spacing
             interimTranscript += event.results[i][0].transcript;
           }
+        }
+
+        // Append any new, non-duplicated final text to the main transcript
+        if (newFinalText) {
+          finalTranscript += newFinalText;
         }
 
         // Update UI: Show finalized text plus current interim text
@@ -285,6 +301,7 @@
     // Event Listeners
     startBtn.addEventListener('click', () => {
       finalTranscript = ''; // Reset transcript for new meeting
+      lastFinalText = ''; // Reset deduplication memory
       transcriptBox.innerHTML = '';
       requestWakeLock();
       try {
