@@ -14,6 +14,7 @@
       --danger: #cf6679;
       --success: #03dac6;
       --border: #333333;
+      --timestamp-color: #03dac6;
     }
 
     body {
@@ -141,9 +142,10 @@
       line-height: 1.6;
     }
 
-    .interim-text {
-      color: var(--text-muted);
-      font-style: italic;
+    .timestamp {
+      color: var(--timestamp-color);
+      font-weight: 500;
+      font-size: 0.9em;
     }
   </style>
 </head>
@@ -175,7 +177,6 @@
   </div>
 
   <script>
-    // Elements
     const meetingNameInput = document.getElementById('meetingName');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -185,12 +186,11 @@
     const recordingIndicator = document.getElementById('recordingIndicator');
     const wakeLockStatus = document.getElementById('wakeLockStatus');
 
-    // State
     let isRecording = false;
-    let finalTranscript = '';
+    let finalTranscript = ''; // Plain text for downloading
+    let htmlTranscript = '';  // HTML formatted text for displaying
     let wakeLock = null;
 
-    // Initialize Speech Recognition
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
 
@@ -200,51 +200,52 @@
       startBtn.disabled = true;
     } else {
       recognition = new SpeechRecognition();
-      recognition.continuous = true; // Keep listening
-      recognition.interimResults = true; // Show words as they are spoken
+      recognition.continuous = true; 
+      recognition.interimResults = false; // Prevents the stuttering bug
       recognition.lang = 'en-US';
 
       recognition.onstart = () => {
         isRecording = true;
-        statusText.textContent = "Listening...";
+        statusText.textContent = "Listening... (Text will appear when you pause)";
         recordingIndicator.classList.add('recording');
         startBtn.disabled = true;
         stopBtn.disabled = false;
         downloadBtn.disabled = true;
       };
 
-      // Deduplication variable
       let lastFinalText = '';
 
       recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let newFinalText = '';
+        let newPlainText = '';
+        let newHtmlText = '';
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          let transcriptSegment = event.results[i][0].transcript.trim();
-          
           if (event.results[i].isFinal) {
-            // Anti-Duplication Check: Only add if it's not the exact same as the last chunk
+            let transcriptSegment = event.results[i][0].transcript.trim();
+            
+            // Deduplication check
             if (transcriptSegment !== '' && transcriptSegment !== lastFinalText) {
-              newFinalText += transcriptSegment + ' ';
-              lastFinalText = transcriptSegment; // Save it to check against the next one
+              const now = new Date();
+              const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              
+              // Format for the downloadable text file
+              newPlainText += `[${timeString}] ${transcriptSegment}\n\n`;
+              
+              // Format for the screen (with colored timestamp)
+              newHtmlText += `<span class="timestamp">[${timeString}]</span> ${transcriptSegment}\n\n`;
+              
+              lastFinalText = transcriptSegment; 
             }
-          } else {
-            // Keep interim results with their natural spacing
-            interimTranscript += event.results[i][0].transcript;
           }
         }
 
-        // Append any new, non-duplicated final text to the main transcript
-        if (newFinalText) {
-          finalTranscript += newFinalText;
+        if (newPlainText) {
+          finalTranscript += newPlainText;
+          htmlTranscript += newHtmlText;
+          
+          transcriptBox.innerHTML = htmlTranscript;
+          transcriptBox.scrollTop = transcriptBox.scrollHeight;
         }
-
-        // Update UI: Show finalized text plus current interim text
-        transcriptBox.innerHTML = finalTranscript + '<span class="interim-text">' + interimTranscript + '</span>';
-        
-        // Auto-scroll to bottom
-        transcriptBox.scrollTop = transcriptBox.scrollHeight;
       };
 
       recognition.onerror = (event) => {
@@ -255,8 +256,6 @@
       };
 
       recognition.onend = () => {
-        // The API sometimes stops automatically (e.g., after a long pause).
-        // If we didn't explicitly click "Stop", restart it.
         if (isRecording) {
           recognition.start();
         } else {
@@ -265,20 +264,15 @@
           startBtn.disabled = false;
           stopBtn.disabled = true;
           downloadBtn.disabled = finalTranscript.trim() === '';
-          
-          // Clean up transcript view (remove interim span)
-          transcriptBox.innerHTML = finalTranscript;
         }
       };
     }
 
-    // Wake Lock API Management
     async function requestWakeLock() {
       if ('wakeLock' in navigator) {
         try {
           wakeLock = await navigator.wakeLock.request('screen');
           wakeLockStatus.textContent = "Wake Lock: Active";
-          
           wakeLock.addEventListener('release', () => {
             wakeLockStatus.textContent = "Wake Lock: Off";
           });
@@ -298,16 +292,15 @@
       }
     }
 
-    // Event Listeners
     startBtn.addEventListener('click', () => {
-      finalTranscript = ''; // Reset transcript for new meeting
-      lastFinalText = ''; // Reset deduplication memory
+      finalTranscript = ''; 
+      htmlTranscript = '';
+      lastFinalText = ''; 
       transcriptBox.innerHTML = '';
       requestWakeLock();
       try {
         recognition.start();
       } catch (e) {
-        // Handle case where recognition might already be started
         console.error(e);
       }
     });
@@ -320,26 +313,21 @@
 
     downloadBtn.addEventListener('click', () => {
       const meetingName = meetingNameInput.value.trim() || 'Untitled_Meeting';
-      const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const dateStr = new Date().toISOString().split('T')[0]; 
       const filename = `${meetingName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${dateStr}.txt`;
       
       const blob = new Blob([finalTranscript], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
-      
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
       a.download = filename;
-      
       document.body.appendChild(a);
       a.click();
-      
-      // Cleanup
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     });
 
-    // Re-request wake lock if document becomes visible again while recording
     document.addEventListener('visibilitychange', async () => {
       if (wakeLock !== null && document.visibilityState === 'visible') {
         requestWakeLock();
